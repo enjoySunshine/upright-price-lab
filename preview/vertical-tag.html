@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>竖排价签预览 · Ç Ć Č</title>
+<style>
+  :root {
+    --ok: #1e7d32;
+    --bad: #c0392b;
+    --ink: #1a1a1a;
+    --paper: #f7f3e8;
+  }
+  body {
+    margin: 0;
+    padding: 24px;
+    font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 24px;
+  }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  .panel { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+  .control { margin-bottom: 14px; }
+  .control label { display: block; font-size: 13px; margin-bottom: 4px; color: #555; }
+  input[type="range"] { width: 100%; }
+  .wght-readout { font-variant-numeric: tabular-nums; font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 8px; }
+  th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: right; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  .checks { list-style: none; padding: 0; margin: 12px 0 0; font-size: 12px; }
+  .checks li { padding: 3px 0; display: flex; gap: 6px; align-items: baseline; }
+  .checks .flag { font-weight: 700; }
+  .checks .ok .flag { color: var(--ok); }
+  .checks .bad .flag { color: var(--bad); }
+  .checks code { background: #f2f2f2; padding: 1px 4px; border-radius: 3px; }
+  .stage {
+    background: #ececec;
+    border-radius: 8px;
+    padding: 24px;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 80vh;
+  }
+  .stage svg { height: 78vh; width: auto; box-shadow: 0 4px 18px rgba(0,0,0,.18); }
+  .hint { font-size: 12px; color: #666; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <div>
+    <h1>竖排价签 · 试验字 wght 200–900</h1>
+    <div class="panel">
+      <div class="control">
+        <label>字重 wght：<span class="wght-readout" id="wghtLabel">900</span></label>
+        <input type="range" id="wght" min="200" max="900" step="1" value="900" />
+      </div>
+      <div class="control">
+        <label><input type="checkbox" id="rotated" /> 先横排再整列旋转 90°（等价方案）</label>
+        <label><input type="checkbox" id="ruler" checked /> 显示竖向起点标尺</label>
+      </div>
+      <table>
+        <thead>
+          <tr><th>字</th><th>x</th><th>竖向起点 y</th><th>vAdv</th><th>hAdv（字宽）</th><th>路径开头</th></tr>
+        </thead>
+        <tbody id="glyphRows"></tbody>
+      </table>
+      <ul class="checks" id="checks"></ul>
+      <p class="hint">
+        竖排按每个字的 <code>vAdv</code> 累加定位；<code>hAdv=586</code> 只是字宽，
+        不参与竖向步长。三个字的 x 恒为 0，左对齐。
+      </p>
+    </div>
+  </div>
+  <div class="stage" id="stage"></div>
+
+<script type="module">
+  import { renderPriceTag, WEIGHT_AXIS } from "../src/vertical-tag/index.js";
+
+  const CHARS = ["Ç", "Ć", "Č"];
+  const $ = (id) => document.getElementById(id);
+  const slider = $("wght");
+  const rotated = $("rotated");
+  const ruler = $("ruler");
+
+  function check(name, ok, detail) {
+    return `<li class="${ok ? "ok" : "bad"}"><span class="flag">${ok ? "✓" : "✗"}</span><span>${name} <code>${detail}</code></span></li>`;
+  }
+
+  function draw() {
+    const wght = Number(slider.value);
+    $("wghtLabel").textContent = wght;
+    const { svg, layout } = renderPriceTag(CHARS, {
+      wght,
+      rotated: rotated.checked,
+      ruler: ruler.checked,
+    });
+    $("stage").innerHTML = svg;
+
+    $("glyphRows").innerHTML = layout.glyphs
+      .map(
+        (g) =>
+          `<tr><td>${g.char}</td><td>${g.x}</td><td>${g.y}</td><td>${g.vAdv}</td><td>${g.hAdv}</td><td>${g.pathStart}</td></tr>`
+      )
+      .join("");
+
+    const [g1, g2, g3] = layout.glyphs;
+    const checks = [];
+    if (wght === WEIGHT_AXIS.max) {
+      checks.push(check("第二字竖向起点 = 962", g2.y === 962, `y=${g2.y}`));
+      checks.push(check("第三字竖向起点 = 2020（962+1058，不是 962×2）", g3.y === 2020, `y=${g3.y}`));
+      checks.push(check("整列总长 = 3034", layout.totalHeight === 3034, `total=${layout.totalHeight}`));
+      checks.push(check("三字字宽均为 586", layout.glyphs.every((g) => g.hAdv === 586), "hAdv=586"));
+      checks.push(
+        check(
+          "vAdv = 962 / 1058 / 1014",
+          g1.vAdv === 962 && g2.vAdv === 1058 && g3.vAdv === 1014,
+          `${g1.vAdv}/${g2.vAdv}/${g3.vAdv}`
+        )
+      );
+      checks.push(
+        check(
+          "三条路径开头均为 M354 -12",
+          layout.glyphs.every((g) => g.pathStart === "M354 -12"),
+          g1.pathStart
+        )
+      );
+      checks.push(check("三字横坐标一致（左对齐，不斜排）", layout.glyphs.every((g) => g.x === 0), "x=0"));
+    } else if (wght === WEIGHT_AXIS.min) {
+      checks.push(check("不拉轴：Ç vAdv 回到 1000", g1.vAdv === 1000, `vAdv=${g1.vAdv}`));
+      checks.push(check("不拉轴：Ç 路径开头回到 M328 -12", g1.pathStart === "M328 -12", g1.pathStart));
+      checks.push(check("第二字起点按 1000 步长 = 1000（不残留 962）", g2.y === 1000, `y=${g2.y}`));
+      checks.push(check("字宽回到 562", layout.glyphs.every((g) => g.hAdv === 562), "hAdv=562"));
+      checks.push(
+        check(
+          "200 与 900 不是同一条路径",
+          renderPriceTag(CHARS, { wght: 200, ruler: false }).layout.glyphs[0].pathStart ===
+            "M328 -12",
+          "M328 -12 ≠ M354 -12"
+        )
+      );
+    } else {
+      checks.push(check("中间字重：起点仍由 vAdv 累加", g2.y === g1.vAdv && g3.y === g1.vAdv + g2.vAdv, `${g1.y}/${g2.y}/${g3.y}`));
+      checks.push(check("左对齐", layout.glyphs.every((g) => g.x === 0), "x=0"));
+    }
+    $("checks").innerHTML = checks.join("");
+  }
+
+  slider.addEventListener("input", draw);
+  rotated.addEventListener("change", draw);
+  ruler.addEventListener("change", draw);
+  draw();
+</script>
+</body>
+</html>
